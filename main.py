@@ -8,10 +8,31 @@ import string
 from PIL import Image
 import shutil
 import os
+from selenium.webdriver.common.proxy import Proxy, ProxyType
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
+from seleniumwire import webdriver
+
+def get_driver():
+    
+    fr_options = webdriver.FirefoxOptions()
+    fr_options.add_argument('--headless')
+    options = {
+        
+        'request_storage': 'memory',
+        'request_storage_max_size': 1
+    }
+    
+    driver = webdriver.Firefox(options=fr_options, seleniumwire_options=options)
+    return driver
+
+
+
+
 
 # main function to call other functions
 def main():
-    driver = webdriver.Chrome()
+    driver = get_driver()
     catalog_links_list = get_catalog_links(url_catalog='http://carefood.kz/catalog')
     print(catalog_links_list)
     for link in catalog_links_list:
@@ -61,38 +82,44 @@ def parse_product_data(soup, data, carefood_img):
         absolute_url = urljoin("http://carefood.kz/", product_img_url)
         response = requests.get(absolute_url, stream=True)
 
-        if product_title:
-            image_name = (product_title.replace(' ', '').replace('&', '').replace('№', '').replace('/', '').replace(',',
-                                                                                                                    '').replace(
-                '\\', '').replace('|', '').replace('_', '')
-                          .translate(str.maketrans('', '', string.punctuation)) + 'carefood')
+        for category in item.find_all('div', class_='col-12 visible-xs mobile-title'):
+            category_name = category.find('div', class_='title_box').text.strip()  # Extract category name
 
-            with open(f'{image_name}.webp', 'wb') as out_file:
-                shutil.copyfileobj(response.raw, out_file)
+            if product_title:
+                image_name = (product_title.replace(' ', '').replace('&', '').replace('№', '').replace('/', '').replace(',',
+                                                                                                                        '').replace(
+                    '\\', '').replace('|', '').replace('_', '')
+                              .translate(str.maketrans('', '', string.punctuation)) + 'carefood')
 
-            image_path = os.path.join(carefood_img, image_name)
+                with open(f'{image_name}.webp', 'wb') as out_file:
+                    shutil.copyfileobj(response.raw, out_file)
 
-            with open(image_path, 'wb') as out_file:
-                shutil.copyfileobj(response.raw, out_file)
+                image_path = os.path.join(carefood_img, image_name)
 
-            data.append({'Title': product_title, 'Image URL': product_img_url, 'Image Path': image_path})
+                with open(image_path, 'wb') as out_file:
+                    shutil.copyfileobj(response.raw, out_file)
+
+                data.append({'Title': product_title, 'Image URL': product_img_url, 'Image Path': image_path,
+                             'Category Name': category_name})  # Add 'Category Name' to data dictionary
 
         del response
+
 
 # Creates the csv file and write all the Image titles, URLs and image paths
 def write_to_csv(data):
     csv_path = 'carefood_data.csv'
 
     with open(csv_path, 'a', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['Title', 'Image URL', 'Image Path']
+        fieldnames = ['Title', 'Image URL', 'Image Path', 'Category Name'] 
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         if csvfile.tell() == 0:
             writer.writeheader()
         writer.writerows(data)
 
+
 # Collects links from catalog(лучшие предложения, алкоголь и напитки и т.д.)
 def get_catalog_links(url_catalog):
-    driver = webdriver.Chrome()
+    driver = get_driver()
     driver.get(url_catalog)
     content = driver.page_source
     soup = BeautifulSoup(content, 'lxml')
